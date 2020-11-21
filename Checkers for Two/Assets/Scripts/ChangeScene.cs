@@ -5,9 +5,8 @@ using UnityEngine.SceneManagement;
 
 public class ChangeScene : MonoBehaviour
 {
-    void OnMouseUp()
+    public void LoadScene(string sceneName)
     {
-        Console.WriteLine("Test");
-        SceneManager.LoadScene("MainGameScreen");
+        SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
     }
 }
