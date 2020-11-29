@@ -71,18 +71,18 @@ public class GamePiece : MonoBehaviour, IDragHandler, IPointerUpHandler, IPointe
 
     void IDragHandler.OnDrag(PointerEventData eventData)
     {
-        if (Manager.Turn == color)
+        if (Manager.CanMove(this))
             transform.position = Input.mousePosition;
     }
     void IPointerDownHandler.OnPointerDown(PointerEventData eventData)
     {
-        if (Manager.Turn == color)
+        if (Manager.CanMove(this))
             initialPosition = transform.position;
     }
 
     void IPointerUpHandler.OnPointerUp(PointerEventData eventData)
     {
-        if (Manager.Turn != color)
+        if (!Manager.CanMove(this))
             return;
 
         if (!IsOnBoard(transform.position))
@@ -90,9 +90,9 @@ public class GamePiece : MonoBehaviour, IDragHandler, IPointerUpHandler, IPointe
         else
         {
             Vector2 newPosition = ToGridPosition(transform.position);
-            bool moveResult = Manager.TryMove(this, newPosition);
-            if (moveResult)
-                GridPosition = newPosition;
+            MoveResult moveResult = Manager.CheckMove(this, newPosition);
+            if (moveResult.IsValid)
+                Manager.DoMove(this, moveResult, newPosition);
             else
                 transform.position = initialPosition;
         }
@@ -128,4 +128,30 @@ public class GamePiece : MonoBehaviour, IDragHandler, IPointerUpHandler, IPointe
         transform.position = finalPosition;
     }
 
+    public List<Vector2> MovementDirections()
+    {
+        List<Vector2> directions = new List<Vector2>();
+
+        if (king)
+        {
+            directions = new List<Vector2>()
+            {
+                new Vector2(1, 1),
+                new Vector2(-1, 1),
+                new Vector2(1, -1),
+                new Vector2(-1, -1)
+            };
+        }
+
+        else
+        {
+            directions = new List<Vector2>()
+            {
+                new Vector2(1, 0) + color.ForwardDirection(),
+                new Vector2(-1, 0) + color.ForwardDirection()
+            };
+        }
+
+        return directions;
+    }
 }

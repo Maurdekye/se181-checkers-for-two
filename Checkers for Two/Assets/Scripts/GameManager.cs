@@ -2,17 +2,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-struct MoveResult
+public struct MoveResult
 {
     public bool IsValid;
-    public bool ShouldContinueTurn;
+    public bool wasJumpingMove;
     public bool ShouldTakePiece;
     public GameObject PieceToTake;
     
     public MoveResult(bool isValid, bool shouldContinueTurn, GameObject pieceToTake)
     {
         IsValid = isValid;
-        ShouldContinueTurn = shouldContinueTurn;
+        wasJumpingMove = shouldContinueTurn;
         ShouldTakePiece = true;
         PieceToTake = pieceToTake;
     }
@@ -20,7 +20,7 @@ struct MoveResult
     public MoveResult(bool isValid, bool shouldContinueTurn)
     {
         IsValid = isValid;
-        ShouldContinueTurn = shouldContinueTurn;
+        wasJumpingMove = shouldContinueTurn;
         ShouldTakePiece = false;
         PieceToTake = null;
     }
@@ -28,18 +28,32 @@ struct MoveResult
     public MoveResult(bool isValid)
     {
         IsValid = isValid;
-        ShouldContinueTurn = !isValid;
+        wasJumpingMove = !isValid;
         ShouldTakePiece = false;
         PieceToTake = null;
     }
 }
 
+public enum WinResult
+{
+    NOT_OVER, RED, WHITE, DRAW
+}
+
+public enum TurnState
+{
+    NORMAL, CONSECUTIVE_JUMP
+}
+
 public class GameManager : MonoBehaviour
 {
-    public PieceType Turn = PieceType.RED;
     public GameObject GameBoard;
     public GameObject UICanvas;
     public ResultsPanel ResultsPanel;
+
+    [Space()]
+    public PieceType Turn = PieceType.RED;
+    public TurnState TurnState = TurnState.NORMAL;
+    public bool GameOver = false;
 
     [Space()]
     public GameObject RedTurnIndicator;
@@ -50,7 +64,16 @@ public class GameManager : MonoBehaviour
     public GameObject WhitePiecePrefab;
 
     [HideInInspector]
-    public List<GameObject> GamePieces;
+    public List<GameObject> GamePieceObjs;
+
+    // DO NOT modify this variable, only modify GamePieceObjs above
+    public List<GamePiece> GamePieces {
+        get {
+            return GamePieceObjs.ConvertAll(p => p.GetComponent<GamePiece>());
+        }
+    }
+
+    GamePiece JumpingPiece;
 
     public void Start()
     {
@@ -60,6 +83,9 @@ public class GameManager : MonoBehaviour
     public void InitializeGame()
     {
         Turn = PieceType.RED;
+        TurnState = TurnState.NORMAL;
+        JumpingPiece = null;
+        GameOver = false;
         InitializeBoard();
         SetTurnIndicators();
     }
@@ -67,8 +93,8 @@ public class GameManager : MonoBehaviour
     public void InitializeBoard()
     {
         // Delete existing pieces
-        GamePieces.ForEach(p => Destroy(p));
-        GamePieces.Clear();
+        GamePieceObjs.ForEach(p => Destroy(p));
+        GamePieceObjs.Clear();
 
         // Hide Results Dialogue
         ResultsPanel.Disable();
@@ -84,7 +110,7 @@ public class GameManager : MonoBehaviour
             newRedPiece.Board = GameBoard;
             newRedPiece.Manager = this;
             newRedPiece.GridPosition = redPiecePosition;
-            GamePieces.Add(newRedPieceObj);
+            GamePieceObjs.Add(newRedPieceObj);
 
             // Add white pieces
             int j = i + 20;
@@ -96,7 +122,7 @@ public class GameManager : MonoBehaviour
             newWhitePiece.Board = GameBoard;
             newWhitePiece.Manager = this;
             newWhitePiece.GridPosition = whitePiecePosition;
-            GamePieces.Add(newWhitePieceObj);
+            GamePieceObjs.Add(newWhitePieceObj);
         }
     }
 
@@ -112,36 +138,70 @@ public class GameManager : MonoBehaviour
         WhiteTurnIndicator.SetActive(Turn == PieceType.WHITE);
     }
 
-    public bool TryMove(GamePiece piece, Vector2 newPosition)
+    public bool CanMove(GamePiece piece)
     {
-        MoveResult result = TestMove(piece, newPosition);
-
-        if (!result.IsValid)
+        if (Turn != piece.color || GameOver)
             return false;
-        else
-        {
-            // Take piece if one should be taken
-            if (result.ShouldTakePiece)
-            {
-                Destroy(result.PieceToTake);
-                GamePieces.Remove(result.PieceToTake);
-            }
 
-            // King piece if they have moved to the other end of the board
-            if (newPosition.y == piece.color.OpponentBoardEdge())
-                piece.king = true;
+        if (TurnState == TurnState.CONSECUTIVE_JUMP && piece != JumpingPiece)
+            return false;
 
-            // Change turns if they should change
-            if (!result.ShouldContinueTurn)
-                ChangeTurn();
-
-            return true;
-        }
+        return true;
     }
 
-    MoveResult TestMove(GamePiece piece, Vector2 newPosition)
+    public void DoMove(GamePiece piece, MoveResult result, Vector2 newPosition)
     {
-        Debug.Log($"{piece.color.ToString()} trying to move from {piece.GridPosition} > {newPosition}");
+        // Move piece to new position
+        piece.GridPosition = newPosition;
+
+        // Take piece if one should be taken
+        if (result.ShouldTakePiece)
+        {
+            Destroy(result.PieceToTake);
+            GamePieceObjs.Remove(result.PieceToTake);
+        }
+
+        // King piece if they have moved to the other end of the board
+        if (piece.GridPosition.y == piece.color.OpponentBoardEdge())
+            piece.king = true;
+
+        // Check if game over
+        WinResult turnResult = CheckIfGameWon();
+        if (turnResult != WinResult.NOT_OVER)
+        {
+            EndGame(turnResult);
+            return;
+        }
+
+        // Check if another jumping move can be made
+        if (result.wasJumpingMove && CanMakeAdditionalJump(piece))
+        {
+            TurnState = TurnState.CONSECUTIVE_JUMP;
+            JumpingPiece = piece;
+        }
+        else
+        {
+            TurnState = TurnState.NORMAL;
+            JumpingPiece = null;
+            ChangeTurn();
+        }
+
+    }
+
+    public void EndGame(WinResult winner)
+    {
+        GameOver = true;
+        ResultsPanel.DecideWinner(winner);
+    }
+
+    public void Draw()
+    {
+        EndGame(WinResult.DRAW);
+    }
+
+    public MoveResult CheckMove(GamePiece piece, Vector2 newPosition)
+    {
+        //Debug.Log($"{piece.color.ToString()} trying to move from {piece.GridPosition} > {newPosition}");
 
         // Can only move a piece of the right turn color
         if (piece.color != Turn)
@@ -152,34 +212,10 @@ public class GameManager : MonoBehaviour
             return new MoveResult(false);
 
         // Can't move into a position with another piece
-        if (GamePieces.ConvertAll(p => p.GetComponent<GamePiece>()).Exists(p => p.GridPosition == newPosition))
+        if (GamePieces.Exists(p => p.GridPosition == newPosition))
             return new MoveResult(false);
 
-        List<Vector2> directions = new List<Vector2>();
-
-        // If a piece is a king, it can move in all four directions
-        if (piece.king)
-        {
-            directions = new List<Vector2>()
-            {
-                new Vector2(1, 1),
-                new Vector2(-1, 1),
-                new Vector2(1, -1),
-                new Vector2(-1, -1)
-            };
-        } 
-
-        // Otherwise, it can only move diagonally forward, left or right
-        else
-        {
-            directions = new List<Vector2>()
-            {
-                new Vector2(1, 0) + piece.color.ForwardDirection(),
-                new Vector2(-1, 0) + piece.color.ForwardDirection()
-            };
-        }
-
-        foreach (Vector2 dir in directions)
+        foreach (Vector2 dir in piece.MovementDirections())
         {
             // Piece can move to grid squares diagonally beside it
             Vector2 movement = piece.GridPosition + dir;
@@ -190,7 +226,7 @@ public class GameManager : MonoBehaviour
             Vector2 longMovement = piece.GridPosition + dir * 2;
             if (newPosition == longMovement)
             {
-                foreach (GameObject pieceObj in GamePieces)
+                foreach (GameObject pieceObj in GamePieceObjs)
                 {
                     GamePiece p = pieceObj.GetComponent<GamePiece>();
                     if (p.GridPosition == movement && p.color != piece.color)
@@ -201,5 +237,46 @@ public class GameManager : MonoBehaviour
         }
 
         return new MoveResult(false);
+    }
+
+    public bool CanMakeAdditionalJump(GamePiece piece)
+    {
+        foreach (Vector2 dir in piece.MovementDirections())
+        {
+            Vector2 movement = piece.GridPosition + dir;
+            Vector2 longMovement = piece.GridPosition + dir * 2;
+
+            bool emptySpace = !GamePieces.Exists(p => p.GridPosition == longMovement);
+            bool pieceToJumpOver = GamePieces.Exists(p => p.GridPosition == movement && p.color != piece.color);
+            bool movementInBounds = longMovement.x >= 0 && longMovement.y >= 0 && longMovement.x <= 7 && longMovement.y <= 7;
+            Debug.Log($"{movement}, {longMovement}; {emptySpace}, {pieceToJumpOver}, {movementInBounds}");
+            if (emptySpace && pieceToJumpOver && movementInBounds)
+                return true;
+        }
+
+        return false;
+    }
+
+    public WinResult CheckIfGameWon()
+    {
+        bool anyRed = false;
+        bool anyWhite = false;
+
+        foreach (GamePiece piece in GamePieces)
+        {
+            if (piece.color == PieceType.RED)
+                anyRed = true;
+            else if (piece.color == PieceType.WHITE)
+                anyWhite = true;
+            if (anyRed && anyWhite)
+                return WinResult.NOT_OVER;
+        }
+
+        if (anyRed)
+            return WinResult.RED;
+        else if (anyWhite)
+            return WinResult.WHITE;
+        else
+            return WinResult.DRAW;
     }
 }
