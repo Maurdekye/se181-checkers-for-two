@@ -28,7 +28,7 @@ struct MoveResult
     public MoveResult(bool isValid)
     {
         IsValid = isValid;
-        ShouldContinueTurn = true;
+        ShouldContinueTurn = !isValid;
         ShouldTakePiece = false;
         PieceToTake = null;
     }
@@ -36,18 +36,80 @@ struct MoveResult
 
 public class GameManager : MonoBehaviour
 {
+    public PieceType Turn = PieceType.RED;
+    public GameObject GameBoard;
+    public GameObject UICanvas;
+    public ResultsPanel ResultsPanel;
+
+    [Space()]
+    public GameObject RedTurnIndicator;
+    public GameObject WhiteTurnIndicator;
+
+    [Space()]
+    public GameObject RedPiecePrefab;
+    public GameObject WhitePiecePrefab;
+
+    [HideInInspector]
     public List<GameObject> GamePieces;
 
-    // Start is called before the first frame update
-    void Start()
+    public void Start()
     {
-        
+        InitializeGame();
     }
 
-    // Update is called once per frame
-    void Update()
+    public void InitializeGame()
     {
-        
+        Turn = PieceType.RED;
+        InitializeBoard();
+        SetTurnIndicators();
+    }
+
+    public void InitializeBoard()
+    {
+        // Delete existing pieces
+        GamePieces.ForEach(p => Destroy(p));
+        GamePieces.Clear();
+
+        // Hide Results Dialogue
+        ResultsPanel.Disable();
+
+        for (int i = 0; i < 12; i++)
+        {
+            // Add red pieces
+            float irow = Mathf.Floor(i / 4);
+            Vector2 redPiecePosition = new Vector2((i * 2 + irow % 2) % 8, irow);
+            GameObject newRedPieceObj = Instantiate(RedPiecePrefab);
+            newRedPieceObj.transform.SetParent(UICanvas.transform);
+            GamePiece newRedPiece = newRedPieceObj.GetComponent<GamePiece>();
+            newRedPiece.Board = GameBoard;
+            newRedPiece.Manager = this;
+            newRedPiece.GridPosition = redPiecePosition;
+            GamePieces.Add(newRedPieceObj);
+
+            // Add white pieces
+            int j = i + 20;
+            float jrow = Mathf.Floor(j / 4);
+            Vector2 whitePiecePosition = new Vector2((j * 2 + jrow % 2) % 8, jrow);
+            GameObject newWhitePieceObj = Instantiate(WhitePiecePrefab);
+            newWhitePieceObj.transform.SetParent(UICanvas.transform);
+            GamePiece newWhitePiece = newWhitePieceObj.GetComponent<GamePiece>();
+            newWhitePiece.Board = GameBoard;
+            newWhitePiece.Manager = this;
+            newWhitePiece.GridPosition = whitePiecePosition;
+            GamePieces.Add(newWhitePieceObj);
+        }
+    }
+
+    public void ChangeTurn()
+    {
+        Turn = Turn.Opposite();
+        SetTurnIndicators();
+    }
+
+    public void SetTurnIndicators()
+    {
+        RedTurnIndicator.SetActive(Turn == PieceType.RED);
+        WhiteTurnIndicator.SetActive(Turn == PieceType.WHITE);
     }
 
     public bool TryMove(GamePiece piece, Vector2 newPosition)
@@ -69,6 +131,10 @@ public class GameManager : MonoBehaviour
             if (newPosition.y == piece.color.OpponentBoardEdge())
                 piece.king = true;
 
+            // Change turns if they should change
+            if (!result.ShouldContinueTurn)
+                ChangeTurn();
+
             return true;
         }
     }
@@ -76,6 +142,10 @@ public class GameManager : MonoBehaviour
     MoveResult TestMove(GamePiece piece, Vector2 newPosition)
     {
         Debug.Log($"{piece.color.ToString()} trying to move from {piece.GridPosition} > {newPosition}");
+
+        // Can only move a piece of the right turn color
+        if (piece.color != Turn)
+            return new MoveResult(false);
 
         // Can only move to white squares
         if ((newPosition.x + newPosition.y) % 2 == 1)

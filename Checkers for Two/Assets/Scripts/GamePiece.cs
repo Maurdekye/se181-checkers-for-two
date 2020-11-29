@@ -26,75 +26,106 @@ public static class PieceTypeMethods
         else
             return 0;
     }
+
+    public static PieceType Opposite(this PieceType type)
+    {
+        if (type == PieceType.RED)
+            return PieceType.WHITE;
+        else
+            return PieceType.RED;
+    }
 }
 
 public class GamePiece : MonoBehaviour, IDragHandler, IPointerUpHandler, IPointerDownHandler
 {
     public GameObject Board;
     public GameManager Manager;
-    public Vector2 GridPosition;
+    public Vector2 GridPosition {
+        get {
+            return _gridPosition;
+        }
+        set {
+            SetGridPosition(value);
+        }
+    }
     public PieceType color = PieceType.RED;
     public Sprite unkingedSprite;
     public Sprite kingedSprite;
     public bool king {
         get {
-            return isKing;
+            return _king;
         }
         set {
-            isKing = value;
-            if (isKing)
-                this.gameObject.GetComponent<Image>().sprite = kingedSprite;
+            _king = value;
+            if (_king)
+                GetComponent<Image>().sprite = kingedSprite;
             else
-                this.gameObject.GetComponent<Image>().sprite = unkingedSprite;
+                GetComponent<Image>().sprite = unkingedSprite;
         }
     }
 
     int GridSize = 8;
     Vector2 initialPosition;
-    bool isKing = false;
+    bool _king = false;
+    Vector2 _gridPosition;
 
     void IDragHandler.OnDrag(PointerEventData eventData)
     {
-        transform.position = Input.mousePosition;
+        if (Manager.Turn == color)
+            transform.position = Input.mousePosition;
     }
     void IPointerDownHandler.OnPointerDown(PointerEventData eventData)
     {
-        initialPosition = transform.position;
+        if (Manager.Turn == color)
+            initialPosition = transform.position;
     }
 
     void IPointerUpHandler.OnPointerUp(PointerEventData eventData)
     {
-        BoxCollider2D boardCollider = Board.GetComponent<BoxCollider2D>();
-        if (!boardCollider.OverlapPoint(Input.mousePosition))
-        {
+        if (Manager.Turn != color)
+            return;
+
+        if (!IsOnBoard(transform.position))
             transform.position = initialPosition;
-        } 
         else
         {
-
-            Vector2 piecePosition = transform.position;
-            Bounds boardBounds = boardCollider.bounds;
-            Vector2 boardDimension = boardBounds.extents * 2;
-            Vector2 topLeft = boardBounds.center - boardBounds.extents;
-            Vector2 relativePosition = (piecePosition - topLeft) / boardDimension;
-            Vector2 scaledPosition = relativePosition * GridSize;
-            Vector2 snappedScaledPosition = new Vector2(Mathf.Floor(scaledPosition.x), Mathf.Floor(scaledPosition.y));
-            Vector2 newGridPosition = snappedScaledPosition;
-            snappedScaledPosition += new Vector2(0.5f, 0.5f);
-            Vector3 snappedPosition = snappedScaledPosition / GridSize;
-            Vector3 finalPosition = snappedPosition * boardDimension + topLeft;
-           
-            bool moveResult = Manager.TryMove(this, newGridPosition);
+            Vector2 newPosition = ToGridPosition(transform.position);
+            bool moveResult = Manager.TryMove(this, newPosition);
             if (moveResult)
-            {
-                GridPosition = newGridPosition;
-                transform.position = finalPosition;
-            }
+                GridPosition = newPosition;
             else
-            {
                 transform.position = initialPosition;
-            }
         }
+    }
+    public bool IsOnBoard(Vector2 position)
+    {
+        BoxCollider2D boardCollider = Board.GetComponent<BoxCollider2D>();
+        return boardCollider.OverlapPoint(position);
+    }
+
+    public Vector2 ToGridPosition(Vector2 rawPosition)
+    {
+        BoxCollider2D boardCollider = Board.GetComponent<BoxCollider2D>();
+        Bounds boardBounds = boardCollider.bounds;
+        Vector2 boardDimension = boardBounds.extents * 2;
+        Vector2 topLeft = boardBounds.center - boardBounds.extents;
+        Vector2 relativePosition = (rawPosition - topLeft) / boardDimension;
+        Vector2 scaledPosition = relativePosition * GridSize;
+        Vector2 gridPosition = new Vector2(Mathf.Floor(scaledPosition.x), Mathf.Floor(scaledPosition.y));
+        return gridPosition;
+    }
+
+    public void SetGridPosition(Vector2 position)
+    {
+        BoxCollider2D boardCollider = Board.GetComponent<BoxCollider2D>();
+        Bounds boardBounds = boardCollider.bounds;
+        Vector2 boardDimension = boardBounds.extents * 2;
+        Vector2 topLeft = boardBounds.center - boardBounds.extents;
+        Vector2 snappedScaledPosition = position + new Vector2(0.5f, 0.5f);
+        Vector3 snappedPosition = snappedScaledPosition / GridSize;
+        Vector3 finalPosition = snappedPosition * boardDimension + topLeft;
+        _gridPosition = position;
+        transform.position = finalPosition;
     }
 
 }
