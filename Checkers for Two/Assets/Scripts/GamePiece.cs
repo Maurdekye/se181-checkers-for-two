@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Mirror;
 
 public enum PieceType
 {
@@ -36,7 +37,7 @@ public static class PieceTypeMethods
     }
 }
 
-public class GamePiece : MonoBehaviour, IDragHandler, IPointerUpHandler, IPointerDownHandler
+public class GamePiece : NetworkBehaviour, IDragHandler, IPointerUpHandler, IPointerDownHandler
 {
     public GameObject Board;
     public GameManager Manager;
@@ -91,8 +92,16 @@ public class GamePiece : MonoBehaviour, IDragHandler, IPointerUpHandler, IPointe
         {
             Vector2 newPosition = ToGridPosition(transform.position);
             MoveResult moveResult = Manager.CheckMove(this, newPosition);
+            //Debug.Log(GridPosition);
             if (moveResult.IsValid)
-                Manager.DoMove(this, moveResult, newPosition);
+            {
+                GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+                foreach (GameObject player in players)
+                {
+                    player.GetComponent<PlayerManager>().ChangeBoard0(GridPosition, moveResult, newPosition,color);
+                }
+                //Manager.DoMove(this, moveResult, newPosition);
+            }
             else
                 transform.position = initialPosition;
         }

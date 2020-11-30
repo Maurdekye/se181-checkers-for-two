@@ -1,15 +1,14 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
 public struct MoveResult
 {
     public bool IsValid;
     public bool wasJumpingMove;
     public bool ShouldTakePiece;
-    public GameObject PieceToTake;
+    public Vector2 PieceToTake;
     
-    public MoveResult(bool isValid, bool shouldContinueTurn, GameObject pieceToTake)
+    public MoveResult(bool isValid, bool shouldContinueTurn, Vector2 pieceToTake)
     {
         IsValid = isValid;
         wasJumpingMove = shouldContinueTurn;
@@ -22,7 +21,7 @@ public struct MoveResult
         IsValid = isValid;
         wasJumpingMove = shouldContinueTurn;
         ShouldTakePiece = false;
-        PieceToTake = null;
+        PieceToTake = new Vector2(-1,-1);
     }
 
     public MoveResult(bool isValid)
@@ -30,7 +29,7 @@ public struct MoveResult
         IsValid = isValid;
         wasJumpingMove = !isValid;
         ShouldTakePiece = false;
-        PieceToTake = null;
+        PieceToTake = new Vector2(-1, -1);
     }
 }
 
@@ -48,6 +47,9 @@ public class GameManager : MonoBehaviour
 {
     public GameObject GameBoard;
     public GameObject UICanvas;
+    public GameObject button_prepare;
+    public GameObject button_giveup;
+    public GameObject button_draw;
     public ResultsPanel ResultsPanel;
 
     [Space()]
@@ -77,11 +79,14 @@ public class GameManager : MonoBehaviour
 
     public void Start()
     {
-        InitializeGame();
+        //InitializeGame();
+        button_giveup.SetActive(false);
+        button_draw.SetActive(false);
     }
 
     public void InitializeGame()
     {
+        Debug.Log("Game Start in Line 84!");
         Turn = PieceType.RED;
         TurnState = TurnState.NORMAL;
         JumpingPiece = null;
@@ -140,6 +145,13 @@ public class GameManager : MonoBehaviour
 
     public bool CanMove(GamePiece piece)
     {
+        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        foreach (GameObject player in players)
+        {
+            if (player.GetComponent<PlayerManager>().hasAuthority) {
+                if (player.GetComponent<PlayerManager>().color != Turn) { return false; }
+            }
+        }
         if (Turn != piece.color || GameOver)
             return false;
 
@@ -151,14 +163,22 @@ public class GameManager : MonoBehaviour
 
     public void DoMove(GamePiece piece, MoveResult result, Vector2 newPosition)
     {
+
         // Move piece to new position
         piece.GridPosition = newPosition;
 
         // Take piece if one should be taken
         if (result.ShouldTakePiece)
         {
-            Destroy(result.PieceToTake);
-            GamePieceObjs.Remove(result.PieceToTake);
+            GameObject[] pieces = GameObject.FindGameObjectsWithTag("Piece");
+            foreach (GameObject p in pieces)
+            {
+                if (p.GetComponent<GamePiece>().GridPosition == result.PieceToTake)
+                {
+                    Destroy(p);
+                    GamePieceObjs.Remove(p);
+                }
+            }
         }
 
         // King piece if they have moved to the other end of the board
@@ -187,6 +207,38 @@ public class GameManager : MonoBehaviour
         }
 
     }
+    public void StartGame()
+    {
+        int nubReady = 0;
+        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        if (players.Length == 2)
+        {
+            foreach (GameObject player in players)
+            {
+                if (player.GetComponent<PlayerManager>().isReady)
+                {
+                    nubReady += 1;
+                    Debug.Log(player.name + "   " + nubReady + " in line 215");
+                }
+            }
+        }
+        Debug.Log(nubReady+" in line 219");
+        if (nubReady == 2)
+        {
+            Debug.Log(nubReady);
+            button_prepare.SetActive(false);
+            button_giveup.SetActive(true);
+            button_draw.SetActive(true);
+            InitializeGame();
+            foreach (GameObject player in players)
+            {
+                if (player.GetComponent<PlayerManager>().isReady)
+                {
+                    player.GetComponent<PlayerManager>().SetIsReady(false);
+                }
+            }
+        }
+    }
 
     public void EndGame(WinResult winner)
     {
@@ -196,7 +248,14 @@ public class GameManager : MonoBehaviour
 
     public void Draw()
     {
-        EndGame(WinResult.DRAW);
+        GameObject[] players = GameObject.FindGameObjectsWithTag("Player");
+        foreach (GameObject player in players)
+        {
+            if (player.GetComponent<PlayerManager>().hasAuthority)
+            {
+                player.GetComponent<PlayerManager>().EndGame(WinResult.DRAW);
+            }
+        }
     }
 
     public MoveResult CheckMove(GamePiece piece, Vector2 newPosition)
@@ -230,7 +289,7 @@ public class GameManager : MonoBehaviour
                 {
                     GamePiece p = pieceObj.GetComponent<GamePiece>();
                     if (p.GridPosition == movement && p.color != piece.color)
-                        return new MoveResult(true, true, pieceObj);
+                        return new MoveResult(true, true, pieceObj.GetComponent<GamePiece>().GridPosition);
                 }
                 return new MoveResult(false);
             }
